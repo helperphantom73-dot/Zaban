@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       zip_url:
-        description: 'آدرس اینترنتی فایل زیپ (اختیاری - در صورت خالی بودن از زیپ داخل ریپازیتوری استفاده می‌شود)'
+        description: 'آدرس اینترنتی فایل زیپ (اختیاری)'
         required: false
         default: ''
 
@@ -18,78 +18,79 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 دریافت مخزن (Checkout)
+      - name: 📥 ۱. دریافت مخزن (Checkout)
         uses: actions/checkout@v4
 
-      - name: ☕ راه‌اندازی جاوا ۱۷ (JDK 17)
+      - name: 📦 ۲. شناسایی و استخراج خودکار فایل زیپ
+        run: |
+          echo "=== مرحله بررسی و اکسترکت فایل زیپ ==="
+          
+          # بررسی آیا فایل گرادل از قبل اکسترکت شده یا خیر
+          if [ -f "./gradlew" ] || [ -f "./android/gradlew" ]; then
+            echo "پروژه قبلاً استخراج شده است."
+          else
+            # اگر آدرس دانلود وارد شده باشد
+            if [ -n "${{ github.event.inputs.zip_url }}" ]; then
+              echo "در حال دانلود زیپ از آدرس وارد شده..."
+              curl -sL "${{ github.event.inputs.zip_url }}" -o project.zip
+              ZIP_FILE="project.zip"
+            else
+              # پیدا کردن هر فایل زیپی که در مخزن آپلود کرده‌اید
+              FOUND_ZIP=$(find . -maxdepth 2 -name "*.zip" -type f | head -n 1)
+              if [ -n "$FOUND_ZIP" ]; then
+                echo "فایل زیپ در مخزن پیدا شد: $FOUND_ZIP"
+                ZIP_FILE="$FOUND_ZIP"
+              else
+                echo "فایل زیپی در مخزن نبود؛ دانلود خودکار فایل سورس..."
+                curl -sL "https://tmpfiles.org/dl/1792597180.39799b8ca56ff101/w6AEMpnXa3pA/lingoworld-android-full-github-project.zip" -o project.zip
+                ZIP_FILE="project.zip"
+              fi
+            fi
+
+            echo "در حال اکسترکت کردن $ZIP_FILE..."
+            unzip -o -q "$ZIP_FILE" -d ./
+          fi
+
+          # پیدا کردن خودکار مسیر gradlew در پروژه
+          GRADLEW_FILE=$(find . -name "gradlew" -type f | head -n 1)
+          if [ -z "$GRADLEW_FILE" ]; then
+            echo "::error::فایل gradlew پیدا نشد!"
+            exit 1
+          fi
+
+          WORK_DIR=$(dirname "$GRADLEW_FILE")
+          echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
+          chmod +x "$GRADLEW_FILE"
+
+      - name: ☕ ۳. راه‌اندازی جاوا ۱۷ (بدون کش فایل)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: 📱 راه‌اندازی Android SDK
+      - name: 📱 ۴. راه‌اندازی ابزارهای اندروید (Android SDK)
         uses: android-actions/setup-android@v3
 
-      - name: 📦 شناسایی و آنزیپ خودکار پروژه
+      - name: 🔨 ۵. ساخت خودکار فایل APK با گرادل
         run: |
-          mkdir -p project_build
-          
-          # بررسی فایل زیپ
-          if [ -n "${{ github.event.inputs.zip_url }}" ]; then
-            echo "در حال دریافت فایل زیپ از لینک ارسالی..."
-            curl -sL "${{ github.event.inputs.zip_url }}" -o project.zip
-            ZIP_FILE="project.zip"
-          else
-            FOUND_ZIP=$(find . -maxdepth 2 -name "*.zip" -type f | head -n 1)
-            if [ -n "$FOUND_ZIP" ]; then
-              echo "فایل زیپ در مخزن پیدا شد: $FOUND_ZIP"
-              ZIP_FILE="$FOUND_ZIP"
-            else
-              echo "دانلود خودکار فایل زیپ پشتیبان..."
-              curl -sL "https://tmpfiles.org/dl/1792597180.39799b8ca56ff101/w6AEMpnXa3pA/lingoworld-android-full-github-project.zip" -o project.zip
-              ZIP_FILE="project.zip"
-            fi
-          fi
-
-          # استخراج خودکار
-          echo "در حال اکسترکت کردن $ZIP_FILE ..."
-          unzip -o -q "$ZIP_FILE" -d project_build/
-          
-          if [ -d "project_build/android" ]; then
-            WORK_DIR="project_build/android"
-          else
-            WORK_DIR="project_build"
-          fi
-          
-          echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
-          echo "پروژه در مسیر $WORK_DIR آماده شد."
-
-      - name: 🔑 تنظیم دسترسی اجرای گرادل
-        run: |
-          cd $WORK_DIR
-          chmod +x ./gradlew
-
-      - name: 🔨 ساخت خودکار فایل APK
-        run: |
-          cd $WORK_DIR
+          cd "$WORK_DIR"
+          echo "در حال کامپایل APK..."
           ./gradlew assembleDebug --stacktrace --no-daemon
 
-      - name: 📂 جمع‌آوری APK های خروجی
+      - name: 📂 ۶. جمع‌آوری فایل‌های خروجی APK
         run: |
-          mkdir -p final_apk
-          find "$WORK_DIR" -type f -name "*.apk" -exec cp -v {} final_apk/ \;
-          ls -lh final_apk/
+          mkdir -p output_apk
+          find . -type f -name "*.apk" -exec cp -v {} output_apk/ \;
+          ls -lh output_apk/
 
-      - name: 📤 آپلود APK در Artifacts گیت‌هاب (آماده دانلود)
+      - name: 📤 ۷. آپلود APK در Artifacts گیت‌هاب (آماده دانلود)
         uses: actions/upload-artifact@v4
         with:
           name: LingoWorld-Android-App-APK
-          path: final_apk/*.apk
+          path: output_apk/*.apk
           retention-days: 30
 
-      - name: ✨ گزارش موفقیت در Actions
+      - name: ✨ ۸. گزارش موفقیت در Actions
         run: |
           echo "## 🎉 فایل APK با موفقیت ساخته شد!" >> $GITHUB_STEP_SUMMARY
-          echo "فایل زیپ به شکل کاملاً خودکار اکسترکت شد و برنامه کامپایل گردید." >> $GITHUB_STEP_SUMMARY
-          echo "فایل APK در بخش **Artifacts** بالای همین صفحه برای دانلود آماده است." >> $GITHUB_STEP_SUMMARY
+          echo "فایل APK در کادر Artifacts در بالای همین صفحه آماده دانلود است." >> $GITHUB_STEP_SUMMARY
