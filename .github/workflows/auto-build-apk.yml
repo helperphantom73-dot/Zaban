@@ -25,7 +25,7 @@ jobs:
         run: |
           echo "=== مرحله بررسی و اکسترکت فایل زیپ ==="
           
-          # بررسی آیا فایل گرادل از قبل وجود دارد یا خیر
+          # بررسی آیا پروژه قبلاً استخراج شده یا خیر
           if [ -f "./gradlew" ] || [ -f "./android/gradlew" ]; then
             echo "پروژه قبلاً استخراج شده است."
           else
@@ -35,14 +35,14 @@ jobs:
               curl -sL "${{ github.event.inputs.zip_url }}" -o project.zip
               ZIP_FILE="project.zip"
             else
-              # ۲. پیدا کردن هر فایل زیپی که کاربر در ریپازیتوری آپلود کرده
+              # ۲. پیدا کردن هر فایل زیپی که در ریپازیتوری آپلود کرده‌اید
               FOUND_ZIP=$(find . -maxdepth 2 -name "*.zip" -type f | head -n 1)
               if [ -n "$FOUND_ZIP" ]; then
                 echo "فایل زیپ در ریپازیتوری پیدا شد: $FOUND_ZIP"
                 ZIP_FILE="$FOUND_ZIP"
               else
-                echo "هیچ فایل زیپی در ریپازیتوری پیدا نشد؛ دانلود خودکار آخرین نسخه سورس..."
-                curl -sL "https://tmpfiles.org/dl/1792597180.39799b8ca56ff101/w6AEMpnXa3pA/lingoworld-android-full-github-project.zip" -o project.zip
+                echo "دانلود خودکار فایل سورس پروژه..."
+                curl -sL "https://tmpfiles.org/dl/1792602444.278517c34f8b1339/wQATM2V7ZAgm/lingoworld-android-full-github-project.zip" -o project.zip
                 ZIP_FILE="project.zip"
               fi
             fi
@@ -51,7 +51,7 @@ jobs:
             unzip -o -q "$ZIP_FILE" -d ./
           fi
 
-          # پیدا کردن مسیر دقیق فایل gradlew در پروژه
+          # پیدا کردن مسیر فایل gradlew
           GRADLEW_FILE=$(find . -name "gradlew" -type f | head -n 1)
           if [ -z "$GRADLEW_FILE" ]; then
             echo "::error::فایل gradlew پیدا نشد!"
@@ -77,6 +77,21 @@ jobs:
       - name: 🔨 ۵. ساخت خودکار فایل APK با گرادل
         run: |
           cd "$WORK_DIR"
+          # تنظیم اتوماتیک و قطعی AndroidX در تنظیمات گرادل
+          touch gradle.properties
+          if ! grep -q "android.useAndroidX" gradle.properties; then
+            echo "android.useAndroidX=true" >> gradle.properties
+          fi
+          if ! grep -q "android.nonTransitiveRClass" gradle.properties; then
+            echo "android.nonTransitiveRClass=true" >> gradle.properties
+          fi
+          if ! grep -q "org.gradle.jvmargs" gradle.properties; then
+            echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" >> gradle.properties
+          fi
+          
+          echo "تنظیمات گرادل اعمال شد:"
+          cat gradle.properties
+
           echo "در حال کامپایل APK در مسیر $(pwd)..."
           ./gradlew assembleDebug --stacktrace --no-daemon
 
