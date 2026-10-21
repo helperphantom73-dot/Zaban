@@ -25,23 +25,23 @@ jobs:
         run: |
           echo "=== مرحله بررسی و اکسترکت فایل زیپ ==="
           
-          # بررسی آیا فایل گرادل از قبل اکسترکت شده یا خیر
+          # بررسی آیا فایل گرادل از قبل وجود دارد یا خیر
           if [ -f "./gradlew" ] || [ -f "./android/gradlew" ]; then
             echo "پروژه قبلاً استخراج شده است."
           else
-            # اگر آدرس دانلود وارد شده باشد
+            # ۱. اگر آدرس دانلود اختصاصی داده شده باشد
             if [ -n "${{ github.event.inputs.zip_url }}" ]; then
               echo "در حال دانلود زیپ از آدرس وارد شده..."
               curl -sL "${{ github.event.inputs.zip_url }}" -o project.zip
               ZIP_FILE="project.zip"
             else
-              # پیدا کردن هر فایل زیپی که در مخزن آپلود کرده‌اید
+              # ۲. پیدا کردن هر فایل زیپی که کاربر در ریپازیتوری آپلود کرده
               FOUND_ZIP=$(find . -maxdepth 2 -name "*.zip" -type f | head -n 1)
               if [ -n "$FOUND_ZIP" ]; then
-                echo "فایل زیپ در مخزن پیدا شد: $FOUND_ZIP"
+                echo "فایل زیپ در ریپازیتوری پیدا شد: $FOUND_ZIP"
                 ZIP_FILE="$FOUND_ZIP"
               else
-                echo "فایل زیپی در مخزن نبود؛ دانلود خودکار فایل سورس..."
+                echo "هیچ فایل زیپی در ریپازیتوری پیدا نشد؛ دانلود خودکار آخرین نسخه سورس..."
                 curl -sL "https://tmpfiles.org/dl/1792597180.39799b8ca56ff101/w6AEMpnXa3pA/lingoworld-android-full-github-project.zip" -o project.zip
                 ZIP_FILE="project.zip"
               fi
@@ -51,7 +51,7 @@ jobs:
             unzip -o -q "$ZIP_FILE" -d ./
           fi
 
-          # پیدا کردن خودکار مسیر gradlew در پروژه
+          # پیدا کردن مسیر دقیق فایل gradlew در پروژه
           GRADLEW_FILE=$(find . -name "gradlew" -type f | head -n 1)
           if [ -z "$GRADLEW_FILE" ]; then
             echo "::error::فایل gradlew پیدا نشد!"
@@ -59,22 +59,25 @@ jobs:
           fi
 
           WORK_DIR=$(dirname "$GRADLEW_FILE")
+          echo "پوشه کاری پروژه: $WORK_DIR"
           echo "WORK_DIR=$WORK_DIR" >> $GITHUB_ENV
           chmod +x "$GRADLEW_FILE"
 
-      - name: ☕ ۳. راه‌اندازی جاوا ۱۷ (بدون کش فایل)
+      - name: ☕ ۳. راه‌اندازی جاوا ۱۷ (JDK 17)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 📱 ۴. راه‌اندازی ابزارهای اندروید (Android SDK)
-        uses: android-actions/setup-android@v3
+      - name: 📱 ۴. تایید مجوزهای اندروید
+        run: |
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
       - name: 🔨 ۵. ساخت خودکار فایل APK با گرادل
         run: |
           cd "$WORK_DIR"
-          echo "در حال کامپایل APK..."
+          echo "در حال کامپایل APK در مسیر $(pwd)..."
           ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: 📂 ۶. جمع‌آوری فایل‌های خروجی APK
@@ -92,5 +95,7 @@ jobs:
 
       - name: ✨ ۸. گزارش موفقیت در Actions
         run: |
-          echo "## 🎉 فایل APK با موفقیت ساخته شد!" >> $GITHUB_STEP_SUMMARY
-          echo "فایل APK در کادر Artifacts در بالای همین صفحه آماده دانلود است." >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 تبریک! فایل APK با موفقیت ساخته شد" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "فایل زیپ به صورت ۱۰۰٪ خودکار آنزیپ شد و کامپایل اندروید با موفقیت پایان یافت." >> $GITHUB_STEP_SUMMARY
+          echo "می‌توانید فایل APK را از کادر **Artifacts** در بالای همین صفحه دانلود و روی گوشی نصب نمایید." >> $GITHUB_STEP_SUMMARY
